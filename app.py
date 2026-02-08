@@ -6,11 +6,12 @@ from functools import wraps
 from dotenv import load_dotenv, find_dotenv
 from pathlib import Path
 
-env_path = Path('.') / '.env'
-load_dotenv(dotenv_path=env_path, override=True)
+# Load .env for local dev, but DO NOT override real environment variables (e.g., Railway)
+dotenv_path = find_dotenv(usecwd=True)  # finds .env if present
+load_dotenv(dotenv_path=dotenv_path, override=False)
 
 app = Flask(__name__)
-app.secret_key = 'supersecretkey'
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "supersecretkey")
 
 # Gmail SMTP
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
@@ -22,11 +23,17 @@ app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('EMAIL_DEFAULT_SENDER')  # Yo
 
 mail = Mail(app)
 
-USER_NAME = os.environ.get('USER_NAME')
-USER_PASSWORD = os.environ.get('USER_PASSWORD')
-ADMIN_NAME = os.environ.get('ADMIN_NAME')
-ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD')
-PORTAL_URL = os.environ.get('PORTAL_URL')
+def _getenv_str(key: str, default=None):
+    v = os.environ.get(key)
+    if v is None:
+        return default
+    return v.strip()
+
+USER_NAME = _getenv_str('USER_NAME')
+USER_PASSWORD = _getenv_str('USER_PASSWORD')
+ADMIN_NAME = _getenv_str('ADMIN_NAME')
+ADMIN_PASSWORD = _getenv_str('ADMIN_PASSWORD')
+PORTAL_URL = _getenv_str('PORTAL_URL')
 
 def init_db():
     with sqlite3.connect('grievances.db') as conn:
@@ -61,8 +68,13 @@ def home():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        user = request.form['username']
-        pw = request.form['password']
+        user = (request.form.get('username') or '').strip()
+        pw = (request.form.get('password') or '').strip()
+
+        if not all([USER_NAME, USER_PASSWORD, ADMIN_NAME, ADMIN_PASSWORD]):
+            flash('Server misconfigured: missing USER/ADMIN credentials in environment.')
+            return render_template('login.html', user_display_name=USER_NAME or "User")
+
         if user == USER_NAME and pw == USER_PASSWORD:
             session['user'] = USER_NAME
             return redirect(url_for('submit'))
@@ -71,6 +83,7 @@ def login():
             return redirect(url_for('dashboard'))
         else:
             flash('Invalid credentials')
+
     return render_template('login.html', user_display_name=USER_NAME)
 
 @app.route('/logout')
@@ -93,6 +106,9 @@ def submit():
             conn.commit()
             grievance_id = c.lastrowid
 
+        portal_base = (PORTAL_URL or request.host_url).rstrip('/')
+        login_url = f"{portal_base}{url_for('login')}"
+
         msg = Message("New Grievance from {} 💌".format(USER_NAME),
                       sender=os.environ.get('EMAIL_ADMIN'),
                       recipients=[os.environ.get('EMAIL_ADMIN')])
@@ -104,7 +120,7 @@ def submit():
             <p><strong>Description:</strong><br>{desc}</p>
             <hr>
             <p>Click below to respond:</p>
-            <form action="https://sehaj-grievance-portal.up.railway.app/login" method="GET">
+            <form action="{login_url}" method="GET">
                 <button type="submit" style="padding: 10px; background-color: pink; border: none; border-radius: 5px;">Respond 💌</button>
             </form>
         """

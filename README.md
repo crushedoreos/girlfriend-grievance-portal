@@ -41,6 +41,9 @@ PORTAL_URL=https://your-railway-url.up.railway.app
 
 💡 *To get the EMAIL_PASS, generate an App Password from your Gmail account at [https://myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)*
 
+> Important: Do **not** commit a real `.env` file to GitHub. On deployment platforms (like Railway), set variables in the dashboard.
+> Locally, use `.env` for convenience; in production, environment variables should take precedence.
+
 5. Done! 🚀 Your private grievance portal is live and ready!
 
 ---
